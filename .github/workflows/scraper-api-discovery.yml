@@ -1,0 +1,78 @@
+name: ScraperAPI AutoZone Discovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "providers/scraper_api.py"
+      - "config/**"
+      - ".github/workflows/scraper-api-discovery.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Show commit being tested
+        run: git log -1 --format="%H %s"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run controlled ScraperAPI diagnostics
+        env:
+          SCRAPERAPI_API_KEY: ${{ secrets.SCRAPERAPI_API_KEY }}
+        run: |
+          test -n "$SCRAPERAPI_API_KEY" || (echo "SCRAPERAPI_API_KEY GitHub Actions secret is missing" && exit 1)
+          mkdir -p results
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          from providers.scraper_api import ScraperAPIProvider
+
+          test_case = json.loads(Path("config/test_case.json").read_text())
+          results = ScraperAPIProvider().controlled_diagnose(test_case)
+
+          def clean(text):
+              text = re.sub(r"<script[\s\S]*?</script>", " ", text, flags=re.I)
+              text = re.sub(r"<style[\s\S]*?</style>", " ", text, flags=re.I)
+              text = re.sub(r"<[^>]+>", " ", text)
+              return re.sub(r"\s+", " ", text).strip()
+
+          for result in results:
+              plain = clean(result.get("body", ""))
+              print("\n========== AUTOZONE / SCRAPERAPI ==========")
+              print("Test:", result["label"])
+              print("HTTP:", result["status_code"])
+              print("Success:", result["request_success"])
+              print("Latency:", result["latency_ms"], "ms")
+              print("Request ID:", result["headers"].get("x-scraperapi-request-id"))
+              print("Response Size:", len(result.get("body", "")), "characters")
+              for term in ["90001", "5425", "1457 E Florence", "pickup", "shipping", "availability", "stock", "change store", "select store"]:
+                  pos = plain.lower().find(term.lower())
+                  print(f"{term}: FOUND -> ...{plain[max(0,pos-180):pos+350]}..." if pos >= 0 else f"{term}: NOT FOUND")
+              print("\nPREVIEW")
+              print(plain[:6000])
+              print("============================================\n")
+
+          Path("results/scraper_api_diagnostics.json").write_text(
+              json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
+          PY
+      - name: Upload diagnostic result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-api-autozone-diagnostics-${{ github.run_id }}
+          path: results/scraper_api_diagnostics.json
+          if-no-files-found: warn
+          retention-days: 7
