@@ -19,18 +19,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Show commit being tested
         run: git log -1 --format="%H %s"
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Run controlled ScrapingBee diagnostics
         env:
           SCRAPINGBEE_API_KEY: ${{ secrets.SCRAPINGBEE_API_KEY }}
@@ -52,16 +48,15 @@ jobs:
               return str(body or "")
 
           def clean(text):
-              text = re.sub(r"<script[\\s\\S]*?</script>", " ", text, flags=re.I)
-              text = re.sub(r"<style[\\s\\S]*?</style>", " ", text, flags=re.I)
+              text = re.sub(r"<script[\s\S]*?</script>", " ", text, flags=re.I)
+              text = re.sub(r"<style[\s\S]*?</style>", " ", text, flags=re.I)
               text = re.sub(r"<[^>]+>", " ", text)
-              text = re.sub(r"\\s+", " ", text)
-              return text.strip()
+              return re.sub(r"\s+", " ", text).strip()
 
           for result in results:
               text = body_text(result.get("body"))
               plain = clean(text)
-              print("\\n========== AUTOZONE / SCRAPINGBEE ==========")
+              print("\n========== AUTOZONE / SCRAPINGBEE ==========")
               print("Test:", result["label"])
               print("HTTP:", result["status_code"])
               print("Success:", result["request_success"])
@@ -71,23 +66,15 @@ jobs:
               print("Resolved URL:", result["headers"].get("Spb-resolved-url"))
               print("Request ID:", result["headers"].get("Spb-request-id"))
               print("Response Size:", len(text), "characters")
-
               for term in ["90001", "5425", "1457 E Florence", "pickup", "shipping", "availability", "stock", "change store", "select store"]:
                   pos = plain.lower().find(term.lower())
-                  if pos >= 0:
-                      print(f"{term}: FOUND -> ...{plain[max(0,pos-180):pos+350]}...")
-                  else:
-                      print(f"{term}: NOT FOUND")
-
-              print("\\nPREVIEW")
+                  print(f"{term}: FOUND -> ...{plain[max(0,pos-180):pos+350]}..." if pos >= 0 else f"{term}: NOT FOUND")
+              print("\nPREVIEW")
               print(plain[:6000])
-              print("============================================\\n")
+              print("============================================\n")
 
-          Path("results/scrapingbee_diagnostics.json").write_text(
-              json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8"
-          )
+          Path("results/scrapingbee_diagnostics.json").write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
           PY
-
       - name: Upload diagnostic result
         if: always()
         uses: actions/upload-artifact@v4
