@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run Scrape.do discovery
+      - name: Run staged Scrape.do diagnostics
         env:
           SCRAPE_DO_API_KEY: ${{ secrets.SCRAPE_DO_API_KEY }}
         run: |
@@ -43,38 +43,43 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          from providers.scrape_do import run_discovery
+          from providers.scrape_do import ScrapeDoProvider
 
           test_case = json.loads(Path("config/test_case.json").read_text())
-          result = run_discovery(test_case)
+          provider = ScrapeDoProvider()
+          results = provider.diagnose({**test_case, "session_id": "azmvp01"})
 
-          output = {
-              "provider": result.provider,
-              "request_success": result.request_success,
-              "latency_ms": result.latency_ms,
-              "provider_cost": result.provider_cost,
-              "error": result.error,
-              "raw_response": result.raw_response,
-          }
-          Path("results/scrape_do_discovery.json").write_text(
+          output = []
+          for result in results:
+              row = {
+                  "provider": result.provider,
+                  "request_success": result.request_success,
+                  "latency_ms": result.latency_ms,
+                  "provider_cost": result.provider_cost,
+                  "error": result.error,
+                  "raw_response": result.raw_response,
+              }
+              output.append(row)
+              print(json.dumps({
+                  "mode": result.raw_response.get("mode") if result.raw_response else result.provider,
+                  "request_success": result.request_success,
+                  "status_code": (result.raw_response or {}).get("status_code"),
+                  "latency_ms": result.latency_ms,
+                  "provider_cost": result.provider_cost,
+                  "error": result.error,
+              }, indent=2))
+
+          Path("results/scrape_do_diagnostics.json").write_text(
               json.dumps(output, indent=2, ensure_ascii=False),
               encoding="utf-8",
           )
-
-          print(json.dumps({
-              "provider": result.provider,
-              "request_success": result.request_success,
-              "latency_ms": result.latency_ms,
-              "provider_cost": result.provider_cost,
-              "error": result.error,
-          }, indent=2))
           PY
 
-      - name: Upload discovery result
+      - name: Upload diagnostic result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scrape-do-autozone-discovery-${{ github.run_id }}
-          path: results/scrape_do_discovery.json
+          name: scrape-do-autozone-diagnostics-${{ github.run_id }}
+          path: results/scrape_do_diagnostics.json
           if-no-files-found: warn
           retention-days: 7
