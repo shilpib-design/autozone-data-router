@@ -10,7 +10,7 @@ SCRAPE_DO_ENDPOINT = "https://api.scrape.do/"
 
 
 class ScrapeDoProvider:
-    """Scrape.do adapter plus controlled connectivity diagnostics."""
+    """Scrape.do adapter plus controlled AutoZone rendering diagnostics."""
 
     name = "scrape.do"
 
@@ -68,16 +68,16 @@ class ScrapeDoProvider:
             )
 
     def controlled_diagnose(self, test_case: Dict[str, Any]) -> list[ProviderResult]:
-        """Isolate Scrape.do connectivity before testing browser behavior."""
+        """Test the known-good ZIP route, then add rendering without browser actions."""
         autozone_url = test_case["url"]
         zip_code = test_case.get("location", {}).get("zip", "90001")
+        zip_params = {"super": "true", "geoCode": "us", "postalcode": zip_code}
         return [
-            self._request("https://example.com", "example_com"),
-            self._request(autozone_url, "autozone_plain"),
+            self._request(autozone_url, "autozone_super_zip", zip_params),
             self._request(
                 autozone_url,
-                "autozone_super_zip",
-                {"super": "true", "geoCode": "us", "postalcode": zip_code},
+                "autozone_super_zip_render",
+                {**zip_params, "render": "true", "waitUntil": "networkidle2"},
             ),
         ]
 
