@@ -11,7 +11,7 @@ on:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,60 +22,72 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install httpx
+        run: pip install -r requirements.txt
 
-      - name: Run ZenRows AutoZone diagnostic
+      - name: Run controlled ZenRows diagnostics
         env:
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
         run: |
+          test -n "$ZENROWS_API_KEY" || (echo "ZENROWS_API_KEY GitHub Actions secret is missing" && exit 1)
+          mkdir -p results
           python - <<'PY'
           import json
           import re
+          from pathlib import Path
           from providers.zenrows import ZenRowsProvider
 
-          with open("config/test_case.json", "r", encoding="utf-8") as f:
-              test_case = json.load(f)
+          test_case = json.loads(Path("config/test_case.json").read_text())
+          results = ZenRowsProvider().controlled_diagnose(test_case)
 
-          result = ZenRowsProvider().diagnose(test_case)[0]
-          raw = result.raw_response or {}
-          body = raw.get("body", "")
-          if not isinstance(body, str):
-              body = json.dumps(body, ensure_ascii=False)
+          def body_text(result):
+              body = result.raw_response.get("body", "") if result.raw_response else ""
+              return json.dumps(body, ensure_ascii=False) if isinstance(body, dict) else str(body or "")
 
-          print("========== AUTOZONE / ZENROWS ==========")
-          print(f"Provider: {result.provider}")
-          print(f"HTTP: {raw.get('status_code')}")
-          print(f"Success: {result.request_success}")
-          print(f"Latency: {result.latency_ms} ms")
-          print(f"Error: {result.error}")
-          print(f"Markers: {json.dumps(raw.get('markers', {}), ensure_ascii=False)}")
+          def clean(text):
+              text = re.sub(r"<script[\\s\\S]*?</script>", " ", text, flags=re.I)
+              text = re.sub(r"<style[\\s\\S]*?</style>", " ", text, flags=re.I)
+              text = re.sub(r"<[^>]+>", " ", text)
+              return re.sub(r"\\s+", " ", text).strip()
 
-          for label, needle in [
-              ("MKD619", "MKD619"),
-              ("97471", "97471"),
-              ("90001", "90001"),
-              ("5425", "5425"),
-              ("1457 E Florence", "1457 E Florence"),
-              ("pickup", "pickup"),
-              ("stock_availability", "stock_availability"),
-              ("zipcode", "zipcode"),
-          ]:
-              print(f"{label}: {'FOUND' if needle.lower() in body.lower() else 'NOT FOUND'}")
+          for result in results:
+              raw = result.raw_response or {}
+              body = body_text(result)
+              plain = clean(body)
+              print("\\n========== AUTOZONE / ZENROWS ==========")
+              print("Test:", raw.get("label"))
+              print("HTTP:", raw.get("status_code"))
+              print("Success:", result.request_success)
+              print("Latency:", result.latency_ms, "ms")
+              print("Provider cost:", result.provider_cost)
+              print("Error:", result.error)
+              print("Markers:", json.dumps(raw.get("markers", {}), ensure_ascii=False))
+              for term in ["MKD619", "97471", "90001", "5425", "1457 E Florence", "pickup", "shipping", "availability", "stock", "change store", "select store"]:
+                  pos = plain.lower().find(term.lower())
+                  print(f"{term}: FOUND -> ...{plain[max(0,pos-180):pos+350]}..." if pos >= 0 else f"{term}: NOT FOUND")
+              print("\\nPREVIEW")
+              print(plain[:6000])
+              print("========================================")
 
-          print("\nRESPONSE")
-          print(body[:12000])
-          print("========================================")
+          Path("results/zenrows_diagnostics.json").write_text(
+              json.dumps([
+                  {
+                      "provider": r.provider,
+                      "request_success": r.request_success,
+                      "latency_ms": r.latency_ms,
+                      "provider_cost": r.provider_cost,
+                      "error": r.error,
+                      "raw_response": r.raw_response,
+                  }
+                  for r in results
+              ], indent=2, ensure_ascii=False),
+              encoding="utf-8",
+          )
           PY
-
-      - name: Save diagnostic output
-        if: always()
-        run: |
-          mkdir -p diagnostics
-          echo "ZenRows diagnostic completed. See job logs for the response." > diagnostics/README.txt
 
       - name: Upload diagnostic artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zenrows-autozone-diagnostics-${{ github.run_id }}
-          path: diagnostics
+          path: results/zenrows_diagnostics.json
+          retention-days: 7
