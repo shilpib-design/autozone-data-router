@@ -1,0 +1,29 @@
+{
+  "url": "https://www.autozone.com/p/duralast-disc-brake-pad-set-mkd619/97471",
+  "location": {
+    "zip": "90001"
+  },
+  "expected_store": {
+    "store_id": "5425",
+    "address": "1457 E Florence",
+    "city": "Los Angeles",
+    "state": "CA",
+    "zip": "90001"
+  },
+  "required_fields": [
+    "product_name",
+    "part_number",
+    "price",
+    "availability"
+  ],
+  "optional_fields": [
+    "brand",
+    "images",
+    "description",
+    "fitment",
+    "pickup_available",
+    "ship_available",
+    "store_id",
+    "delivery_estimate"
+  ]
+}
