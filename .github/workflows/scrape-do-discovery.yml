@@ -17,7 +17,7 @@ permissions:
 jobs:
   discovery:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run staged Scrape.do diagnostics
+      - name: Run controlled Scrape.do diagnostics
         env:
           SCRAPE_DO_API_KEY: ${{ secrets.SCRAPE_DO_API_KEY }}
         run: |
@@ -47,7 +47,7 @@ jobs:
 
           test_case = json.loads(Path("config/test_case.json").read_text())
           provider = ScrapeDoProvider()
-          results = provider.diagnose({**test_case, "session_id": "azmvp01"})
+          results = provider.controlled_diagnose(test_case)
 
           output = []
           for result in results:
@@ -60,12 +60,15 @@ jobs:
                   "raw_response": result.raw_response,
               }
               output.append(row)
+              raw = result.raw_response or {}
               print(json.dumps({
-                  "mode": result.raw_response.get("mode") if result.raw_response else result.provider,
+                  "test": raw.get("label", result.provider),
                   "request_success": result.request_success,
-                  "status_code": (result.raw_response or {}).get("status_code"),
+                  "status_code": raw.get("status_code"),
                   "latency_ms": result.latency_ms,
                   "provider_cost": result.provider_cost,
+                  "scrape_do_initial_status": (raw.get("headers") or {}).get("Scrape.do-Initial-Status-Code"),
+                  "resolved_url": (raw.get("headers") or {}).get("Scrape.do-Resolved-Url"),
                   "error": result.error,
               }, indent=2))
 
