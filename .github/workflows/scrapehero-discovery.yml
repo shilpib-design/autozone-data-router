@@ -1,0 +1,74 @@
+name: ScrapeHero AutoZone Discovery
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "providers/scrapehero.py"
+      - "config/test_case.json"
+      - ".github/workflows/scrapehero-discovery.yml"
+
+jobs:
+  discovery:
+    runs-on: ubuntu-latest
+    env:
+      SCRAPEHERO_API_KEY: ${{ secrets.SCRAPEHERO_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run controlled ScrapeHero diagnostic
+        run: |
+          test -n "$SCRAPEHERO_API_KEY" || (echo "SCRAPEHERO_API_KEY GitHub Actions secret is missing" && exit 1)
+          mkdir -p results
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          from providers.scrapehero import ScrapeHeroProvider
+
+          test_case = json.loads(Path("config/test_case.json").read_text())
+          result = ScrapeHeroProvider().diagnose(test_case)
+          raw = result.raw_response or {}
+          body = raw.get("body", {})
+
+          print("========== AUTOZONE / SCRAPEHERO ==========")
+          print("HTTP:", raw.get("status_code"))
+          print("Success:", result.request_success)
+          print("Latency:", result.latency_ms, "ms")
+          print("Endpoint:", raw.get("endpoint"))
+
+          text = json.dumps(body, ensure_ascii=False)
+          for term in ["MKD619", "97471", "90001", "5425", "1457 E Florence", "pickup", "stock_availability", "zipcode"]:
+              pos = text.lower().find(term.lower())
+              print(f"{term}: FOUND" if pos >= 0 else f"{term}: NOT FOUND")
+
+          print("\nRESPONSE")
+          print(json.dumps(body, indent=2, ensure_ascii=False)[:12000])
+          print("============================================")
+
+          Path("results/scrapehero_diagnostics.json").write_text(
+              json.dumps({
+                  "provider": result.provider,
+                  "request_success": result.request_success,
+                  "latency_ms": result.latency_ms,
+                  "error": result.error,
+                  "raw_response": raw,
+              }, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
+          PY
+
+      - name: Upload diagnostic result
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrapehero-autozone-diagnostics-${{ github.run_id }}
+          path: results/scrapehero_diagnostics.json
+          retention-days: 7
