@@ -106,8 +106,7 @@ class ScrapeDoProvider:
                 provider=f"{self.name}:{mode}",
                 request_success=False,
                 latency_ms=int((time.perf_counter() - started) * 1000),
-                error=f"{type(exc).__name__}: {exc}
-",
+                error=f"{type(exc).__name__}: {exc}",
             )
 
     def diagnose(self, request: Dict[str, Any]) -> list[ProviderResult]:
