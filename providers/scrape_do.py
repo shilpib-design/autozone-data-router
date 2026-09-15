@@ -7,12 +7,11 @@ import httpx
 
 from providers.base import ProviderResult
 
-
 SCRAPE_DO_ENDPOINT = "https://api.scrape.do/"
 
 
 class ScrapeDoProvider:
-    """Scrape.do discovery adapter for the frozen AutoZone test case."""
+    """Scrape.do adapter for the frozen AutoZone test case."""
 
     name = "scrape.do"
 
@@ -21,68 +20,55 @@ class ScrapeDoProvider:
         if not self.token:
             raise RuntimeError("SCRAPE_DO_API_KEY is not set")
 
-    def scrape(self, request: Dict[str, Any]) -> ProviderResult:
+    def _request(self, request: Dict[str, Any], mode: str) -> ProviderResult:
         started = time.perf_counter()
         target_url = request["url"]
-        # Scrape.do currently limits sessionId to 7 characters.
         session_id = request.get("session_id", "azmvp01")[:7]
 
-        browser_actions = [
-            {"Action": "Wait", "Timeout": 5000},
-            {
-                "Action": "Execute",
-                "Execute": """
-                    (() => {
-                        const clean = (s) => (s || '').replace(/\\s+/g, ' ').trim();
-                        const inputs = [...document.querySelectorAll('input')].map((el, i) => ({
-                            index: i,
-                            type: el.type || null,
-                            name: el.name || null,
-                            id: el.id || null,
-                            placeholder: el.placeholder || null,
-                            ariaLabel: el.getAttribute('aria-label'),
-                            value: el.value || null,
-                            autocomplete: el.autocomplete || null
-                        }));
-                        const buttons = [...document.querySelectorAll('button, [role="button"]')].map((el, i) => ({
-                            index: i,
-                            tag: el.tagName,
-                            id: el.id || null,
-                            ariaLabel: el.getAttribute('aria-label'),
-                            text: clean(el.innerText).slice(0, 300)
-                        }));
-                        const links = [...document.querySelectorAll('a')].map((el, i) => ({
-                            index: i,
-                            text: clean(el.innerText).slice(0, 200),
-                            href: el.href || null
-                        })).filter(x => x.text || x.href).slice(0, 150);
-                        return JSON.stringify({
-                            url: location.href,
-                            title: document.title,
-                            cookies: document.cookie,
-                            inputs,
-                            buttons,
-                            links,
-                            bodyText: clean(document.body?.innerText).slice(0, 20000)
-                        });
-                    })()
-                """
-            },
-        ]
-
-        params = {
+        params: Dict[str, Any] = {
             "token": self.token,
             "url": target_url,
-            "render": "true",
-            "returnJSON": "true",
             "geoCode": "us",
             "sessionId": session_id,
-            "blockResources": "false",
-            "playWithBrowser": json.dumps(browser_actions, separators=(",", ":")),
         }
 
+        if mode in {"render", "browser"}:
+            params["render"] = "true"
+
+        if mode == "browser":
+            actions = [
+                {"Action": "Wait", "Timeout": 3000},
+                {
+                    "Action": "Execute",
+                    "Execute": """
+                        (() => {
+                            const clean = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+                            const inputs = [...document.querySelectorAll('input')].map((el, i) => ({
+                                index: i, type: el.type || null, name: el.name || null,
+                                id: el.id || null, placeholder: el.placeholder || null,
+                                ariaLabel: el.getAttribute('aria-label'), value: el.value || null,
+                                autocomplete: el.autocomplete || null
+                            }));
+                            const buttons = [...document.querySelectorAll('button, [role="button"]')].map((el, i) => ({
+                                index: i, tag: el.tagName, id: el.id || null,
+                                ariaLabel: el.getAttribute('aria-label'), text: clean(el.innerText).slice(0, 300)
+                            }));
+                            return JSON.stringify({
+                                url: location.href,
+                                title: document.title,
+                                inputs, buttons,
+                                bodyText: clean(document.body?.innerText).slice(0, 20000)
+                            });
+                        })()
+                    """
+                },
+            ]
+            params["returnJSON"] = "true"
+            params["blockResources"] = "false"
+            params["playWithBrowser"] = json.dumps(actions, separators=(",", ":"))
+
         try:
-            with httpx.Client(timeout=90.0, follow_redirects=True) as client:
+            with httpx.Client(timeout=55.0, follow_redirects=True) as client:
                 response = client.get(SCRAPE_DO_ENDPOINT, params=params)
 
             latency_ms = int((time.perf_counter() - started) * 1000)
@@ -98,14 +84,14 @@ class ScrapeDoProvider:
                 body = response.text
 
             return ProviderResult(
-                provider=self.name,
+                provider=f"{self.name}:{mode}",
                 request_success=response.is_success,
                 raw_response={
+                    "mode": mode,
                     "status_code": response.status_code,
                     "headers": {
                         "Scrape.do-Request-Cost": response.headers.get("Scrape.do-Request-Cost"),
                         "Scrape.do-Remaining-Credits": response.headers.get("Scrape.do-Remaining-Credits"),
-                        "Scrape.do-Cookies": response.headers.get("Scrape.do-Cookies"),
                         "Scrape.do-Resolved-Url": response.headers.get("Scrape.do-Resolved-Url"),
                         "Scrape.do-Initial-Status-Code": response.headers.get("Scrape.do-Initial-Status-Code"),
                     },
@@ -117,13 +103,18 @@ class ScrapeDoProvider:
             )
         except Exception as exc:
             return ProviderResult(
-                provider=self.name,
+                provider=f"{self.name}:{mode}",
                 request_success=False,
                 latency_ms=int((time.perf_counter() - started) * 1000),
-                error=f"{type(exc).__name__}: {exc}",
+                error=f"{type(exc).__name__}: {exc}
+",
             )
+
+    def diagnose(self, request: Dict[str, Any]) -> list[ProviderResult]:
+        """Run progressively more complex requests to isolate the failing layer."""
+        return [self._request(request, mode) for mode in ("plain", "render", "browser")]
 
 
 def run_discovery(test_case: Dict[str, Any]) -> ProviderResult:
     provider = ScrapeDoProvider()
-    return provider.scrape({**test_case, "session_id": "azmvp01"})
+    return provider._request({**test_case, "session_id": "azmvp01"}, "browser")
