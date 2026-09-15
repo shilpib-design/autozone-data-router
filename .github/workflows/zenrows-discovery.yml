@@ -1,0 +1,81 @@
+name: ZenRows AutoZone Discovery
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "providers/zenrows.py"
+      - "config/test_case.json"
+      - ".github/workflows/zenrows-discovery.yml"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install httpx
+
+      - name: Run ZenRows AutoZone diagnostic
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from providers.zenrows import ZenRowsProvider
+
+          with open("config/test_case.json", "r", encoding="utf-8") as f:
+              test_case = json.load(f)
+
+          result = ZenRowsProvider().diagnose(test_case)[0]
+          raw = result.raw_response or {}
+          body = raw.get("body", "")
+          if not isinstance(body, str):
+              body = json.dumps(body, ensure_ascii=False)
+
+          print("========== AUTOZONE / ZENROWS ==========")
+          print(f"Provider: {result.provider}")
+          print(f"HTTP: {raw.get('status_code')}")
+          print(f"Success: {result.request_success}")
+          print(f"Latency: {result.latency_ms} ms")
+          print(f"Error: {result.error}")
+          print(f"Markers: {json.dumps(raw.get('markers', {}), ensure_ascii=False)}")
+
+          for label, needle in [
+              ("MKD619", "MKD619"),
+              ("97471", "97471"),
+              ("90001", "90001"),
+              ("5425", "5425"),
+              ("1457 E Florence", "1457 E Florence"),
+              ("pickup", "pickup"),
+              ("stock_availability", "stock_availability"),
+              ("zipcode", "zipcode"),
+          ]:
+              print(f"{label}: {'FOUND' if needle.lower() in body.lower() else 'NOT FOUND'}")
+
+          print("\nRESPONSE")
+          print(body[:12000])
+          print("========================================")
+          PY
+
+      - name: Save diagnostic output
+        if: always()
+        run: |
+          mkdir -p diagnostics
+          echo "ZenRows diagnostic completed. See job logs for the response." > diagnostics/README.txt
+
+      - name: Upload diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zenrows-autozone-diagnostics-${{ github.run_id }}
+          path: diagnostics
