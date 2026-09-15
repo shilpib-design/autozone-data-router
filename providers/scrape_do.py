@@ -1,7 +1,6 @@
 import json
 import os
 import time
-import urllib.parse
 from typing import Any, Dict
 
 import httpx
@@ -13,18 +12,7 @@ SCRAPE_DO_ENDPOINT = "https://api.scrape.do/"
 
 
 class ScrapeDoProvider:
-    """Scrape.do discovery adapter for the frozen AutoZone test case.
-
-    This first version deliberately does not guess AutoZone selectors or cookie names.
-    It opens the product page in a rendered browser session and captures:
-    - rendered/network response data
-    - browser action results
-    - DOM inputs/buttons/links/text signals
-    - Scrape.do request cost and cookie headers
-
-    The next step is to use the observed DOM/network evidence to implement the
-    ZIP/store-selection flow rather than hard-coding assumptions.
-    """
+    """Scrape.do discovery adapter for the frozen AutoZone test case."""
 
     name = "scrape.do"
 
@@ -36,7 +24,8 @@ class ScrapeDoProvider:
     def scrape(self, request: Dict[str, Any]) -> ProviderResult:
         started = time.perf_counter()
         target_url = request["url"]
-        session_id = request.get("session_id", "autozone-mvp-discovery")
+        # Scrape.do currently limits sessionId to 7 characters.
+        session_id = request.get("session_id", "azmvp01")[:7]
 
         browser_actions = [
             {"Action": "Wait", "Timeout": 5000},
@@ -77,7 +66,7 @@ class ScrapeDoProvider:
                             bodyText: clean(document.body?.innerText).slice(0, 20000)
                         });
                     })()
-                """,
+                """
             },
         ]
 
@@ -100,7 +89,7 @@ class ScrapeDoProvider:
             request_cost = response.headers.get("Scrape.do-Request-Cost")
             try:
                 provider_cost = float(request_cost) if request_cost is not None else None
-            except ValueError:
+            except (TypeError, ValueError):
                 provider_cost = None
 
             try:
@@ -137,9 +126,4 @@ class ScrapeDoProvider:
 
 def run_discovery(test_case: Dict[str, Any]) -> ProviderResult:
     provider = ScrapeDoProvider()
-    return provider.scrape(
-        {
-            **test_case,
-            "session_id": "autozone-mvp-discovery",
-        }
-    )
+    return provider.scrape({**test_case, "session_id": "azmvp01"})
