@@ -1,3 +1,4 @@
+import json
 import os
 import time
 from typing import Any, Dict
@@ -10,7 +11,7 @@ SCRAPE_DO_ENDPOINT = "https://api.scrape.do/"
 
 
 class ScrapeDoProvider:
-    """Scrape.do adapter plus controlled AutoZone rendering diagnostics."""
+    """Scrape.do adapter plus controlled AutoZone browser diagnostics."""
 
     name = "scrape.do"
 
@@ -68,16 +69,53 @@ class ScrapeDoProvider:
             )
 
     def controlled_diagnose(self, test_case: Dict[str, Any]) -> list[ProviderResult]:
-        """Test the known-good ZIP route, then add rendering without browser actions."""
+        """Test ZIP routing, rendering, then inspect AutoZone's location controls."""
         autozone_url = test_case["url"]
         zip_code = test_case.get("location", {}).get("zip", "90001")
         zip_params = {"super": "true", "geoCode": "us", "postalcode": zip_code}
+
+        discovery_script = [
+            {
+                "Action": "Wait",
+                "Timeout": 3000,
+            },
+            {
+                "Action": "Execute",
+                "Execute": """
+(() => {
+  const els = [...document.querySelectorAll('input,button,[role="button"],[aria-label]')];
+  return JSON.stringify(els.map((e, i) => ({
+    i,
+    tag: e.tagName,
+    type: e.getAttribute('type'),
+    aria: e.getAttribute('aria-label'),
+    placeholder: e.getAttribute('placeholder'),
+    name: e.getAttribute('name'),
+    id: e.id,
+    text: (e.innerText || e.value || '').trim().slice(0, 160)
+  })).filter(x => /zip|postal|location|store|change|delivery|pickup/i.test(JSON.stringify(x))).slice(0, 80));
+})()
+""",
+            },
+        ]
+
         return [
             self._request(autozone_url, "autozone_super_zip", zip_params),
             self._request(
                 autozone_url,
                 "autozone_super_zip_render",
                 {**zip_params, "render": "true", "waitUntil": "networkidle2"},
+            ),
+            self._request(
+                autozone_url,
+                "autozone_browser_discovery",
+                {
+                    **zip_params,
+                    "render": "true",
+                    "waitUntil": "networkidle2",
+                    "playWithBrowser": json.dumps(discovery_script, separators=(",", ":")),
+                    "returnJSON": "true",
+                },
             ),
         ]
 
