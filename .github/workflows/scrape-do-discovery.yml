@@ -2,6 +2,14 @@ name: Scrape.do AutoZone Discovery
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "providers/**"
+      - "config/**"
+      - "runner/**"
+      - "requirements.txt"
+      - ".github/workflows/scrape-do-discovery.yml"
 
 permissions:
   contents: read
@@ -14,6 +22,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Show commit being tested
+        run: git log -1 --format="%H %s"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -63,7 +74,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scrape-do-autozone-discovery
+          name: scrape-do-autozone-discovery-${{ github.run_id }}
           path: results/scrape_do_discovery.json
           if-no-files-found: warn
           retention-days: 7
