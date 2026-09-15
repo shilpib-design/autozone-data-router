@@ -56,18 +56,29 @@ class ScraperAPIProvider:
         results: list[Dict[str, Any]] = []
 
         # Start with the cheapest standard route, then US geo + JS rendering.
-        # We only escalate to premium proxies if both baseline routes fail.
+        # Escalate only when the preceding route fails.
         results.append(self._request(url, "autozone_plain"))
-        results.append(self._request(url, "autozone_us_render", {
-            "country_code": "us",
-            "render": "true",
-        }))
 
-        if not any(r["request_success"] for r in results):
+        if not results[-1]["request_success"]:
+            results.append(self._request(url, "autozone_us_render", {
+                "country_code": "us",
+                "render": "true",
+            }))
+
+        if not results[-1]["request_success"]:
             results.append(self._request(url, "autozone_us_render_premium", {
                 "country_code": "us",
                 "render": "true",
                 "premium": "true",
+            }))
+
+        # ScraperAPI explicitly suggested ultra_premium=true for this protected domain.
+        # This is the final controlled escalation; do not add further random variants.
+        if not results[-1]["request_success"]:
+            results.append(self._request(url, "autozone_us_render_ultra_premium", {
+                "country_code": "us",
+                "render": "true",
+                "ultra_premium": "true",
             }))
 
         return results
