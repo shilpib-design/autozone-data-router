@@ -1,0 +1,18 @@
+{
+  "location": {
+    "zip": "90001",
+    "expected_store_id": "5425",
+    "expected_address": "1457 E Florence",
+    "city": "Los Angeles",
+    "state": "CA"
+  },
+  "required_fields": ["product_name", "part_number", "price", "availability"],
+  "localization_required": true,
+  "tests": [
+    {"id":"az1","url":"https://www.autozone.com/p/duralast-disc-brake-pad-set-mkd647/97478","part_number":"MKD647","sku":"97478"},
+    {"id":"az2","url":"https://www.autozone.com/p/duralast-disc-brake-pad-set-mkd609/97468","part_number":"MKD609","sku":"97468"},
+    {"id":"az3","url":"https://www.autozone.com/p/duralast-disc-brake-pad-set-mkd619/97471","part_number":"MKD619","sku":"97471"},
+    {"id":"az4","url":"https://www.autozone.com/p/duralast-disc-brake-pad-set-mkd616/97470","part_number":"MKD616","sku":"97470"},
+    {"id":"az5","url":"https://www.autozone.com/p/duralast-disc-brake-pad-set-mkd585/97463","part_number":"MKD585","sku":"97463"}
+  ]
+}
