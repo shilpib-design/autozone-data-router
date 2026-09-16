@@ -1,0 +1,45 @@
+name: AutoZone Localization Probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'runner/autozone_localization_probe.py'
+      - '.github/workflows/autozone-localization-probe.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Verify probe keys
+        env:
+          SCRAPE_DO_API_KEY: ${{ secrets.SCRAPE_DO_API_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          SCRAPINGBEE_API_KEY: ${{ secrets.SCRAPINGBEE_API_KEY }}
+          MRSCRAPER_API_KEY: ${{ secrets.MRSCRAPER_API_KEY }}
+        run: |
+          test -n "$SCRAPE_DO_API_KEY" && echo 'scrape.do: configured'
+          test -n "$FIRECRAWL_API_KEY" && echo 'firecrawl: configured'
+          test -n "$SCRAPINGBEE_API_KEY" && echo 'scrapingbee: configured'
+          test -n "$MRSCRAPER_API_KEY" && echo 'mrscraper: configured'
+      - name: Run localization probe
+        env:
+          SCRAPE_DO_API_KEY: ${{ secrets.SCRAPE_DO_API_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          SCRAPINGBEE_API_KEY: ${{ secrets.SCRAPINGBEE_API_KEY }}
+          MRSCRAPER_API_KEY: ${{ secrets.MRSCRAPER_API_KEY }}
+        run: python runner/autozone_localization_probe.py
+      - name: Upload probe result
+        uses: actions/upload-artifact@v4
+        with:
+          name: autozone-localization-probe-${{ github.run_id }}
+          path: autozone_localization_probe_results.json
