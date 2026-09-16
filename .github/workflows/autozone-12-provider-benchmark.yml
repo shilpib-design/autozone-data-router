@@ -1,0 +1,80 @@
+name: AutoZone 12-Provider Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "config/autozone_benchmark.json"
+      - "runner/autozone_12_provider_benchmark.py"
+      - ".github/workflows/autozone-12-provider-benchmark.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show commit
+        run: git log -1 --format="%H %s"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Verify configured provider keys
+        env:
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          MRSCRAPER_API_KEY: ${{ secrets.MRSCRAPER_API_KEY }}
+          PARSERA_API_KEY: ${{ secrets.PARSERA_API_KEY }}
+          SCRAPEHERO_API_KEY: ${{ secrets.SCRAPEHERO_API_KEY }}
+          SCRAPERAPI_API_KEY: ${{ secrets.SCRAPERAPI_API_KEY }}
+          SCRAPE_DO_API_KEY: ${{ secrets.SCRAPE_DO_API_KEY }}
+          SCRAPINGANT_API_KEY: ${{ secrets.SCRAPINGANT_API_KEY }}
+          SCRAPINGBEE_API_KEY: ${{ secrets.SCRAPINGBEE_API_KEY }}
+          SOCIALCRAWL_API_KEY: ${{ secrets.SOCIALCRAWL_API_KEY }}
+          SPIDERCLOUD_API_KEY: ${{ secrets.SPIDERCLOUD_API_KEY }}
+          THUNDERBIT_API_KEY: ${{ secrets.THUNDERBIT_API_KEY }}
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          failed=0
+          for k in FIRECRAWL_API_KEY MRSCRAPER_API_KEY PARSERA_API_KEY SCRAPEHERO_API_KEY SCRAPERAPI_API_KEY SCRAPE_DO_API_KEY SCRAPINGANT_API_KEY SCRAPINGBEE_API_KEY SOCIALCRAWL_API_KEY SPIDERCLOUD_API_KEY THUNDERBIT_API_KEY ZENROWS_API_KEY; do
+            if [ -n "${!k}" ]; then echo "$k: CONFIGURED"; else echo "$k: MISSING"; failed=1; fi
+          done
+          test "$failed" -eq 0
+
+      - name: Run 12-provider benchmark
+        env:
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          MRSCRAPER_API_KEY: ${{ secrets.MRSCRAPER_API_KEY }}
+          PARSERA_API_KEY: ${{ secrets.PARSERA_API_KEY }}
+          SCRAPEHERO_API_KEY: ${{ secrets.SCRAPEHERO_API_KEY }}
+          SCRAPERAPI_API_KEY: ${{ secrets.SCRAPERAPI_API_KEY }}
+          SCRAPE_DO_API_KEY: ${{ secrets.SCRAPE_DO_API_KEY }}
+          SCRAPINGANT_API_KEY: ${{ secrets.SCRAPINGANT_API_KEY }}
+          SCRAPINGBEE_API_KEY: ${{ secrets.SCRAPINGBEE_API_KEY }}
+          SOCIALCRAWL_API_KEY: ${{ secrets.SOCIALCRAWL_API_KEY }}
+          SPIDERCLOUD_API_KEY: ${{ secrets.SPIDERCLOUD_API_KEY }}
+          THUNDERBIT_API_KEY: ${{ secrets.THUNDERBIT_API_KEY }}
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+        run: |
+          mkdir -p results
+          python runner/autozone_12_provider_benchmark.py
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autozone-12-provider-benchmark-${{ github.run_id }}
+          path: results/autozone_12_provider_results.json
+          if-no-files-found: warn
+          retention-days: 14
